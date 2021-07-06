@@ -9,13 +9,18 @@ namespace FileVersioningTool.Controllers
 {
     public class FileVersioningController : Controller
     {
-        private FileVersioner fileVersioner;
+        private readonly IFileVersioner _fileVersioner;
+
+        public FileVersioningController(IFileVersioner fileVersioner)
+        {
+            _fileVersioner = fileVersioner;
+        }
 
         public IActionResult Index(string path)
         {
             if (!string.IsNullOrWhiteSpace(path))
             {
-                fileVersioner.GetChangesList(path);
+                _fileVersioner.GetChangesList(path);
             }
             return View();
         }
