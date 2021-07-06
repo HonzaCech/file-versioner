@@ -11,7 +11,13 @@ namespace FileVersioningTool.FileVersioningBackend
 {
     public class FileVersioner : IFileVersioner
     {
+        private static readonly MD5 md5 = MD5.Create();
 
+        /// <summary>
+        /// Gets a list of all files that were changed in a given path (recursively) from the previous run, or of all files if first run on this path
+        /// </summary>
+        /// <param name="basePath">Path to process. Must be a valid directory path</param>
+        /// <returns>List of all modified files</returns>
         public async Task<IList<VersionedFile>> GetChangesListAsync(string basePath)
         {
             if (!Directory.Exists(basePath))
@@ -35,18 +41,14 @@ namespace FileVersioningTool.FileVersioningBackend
 
                 string[] allActualFiles = Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories);
                 var actualFilesSet = new HashSet<VersionedFile>(allActualFiles.Select(filename => new VersionedFile() { Name = Path.GetRelativePath(basePath, filename) }));
+                //Don't wanna version the versioning file
                 actualFilesSet.Remove(new VersionedFile() { Name = ".versions" });
 
-                var possiblyModifiedFiles = new HashSet<VersionedFile>(originalFilesSet);
-                possiblyModifiedFiles.IntersectWith(actualFilesSet);
+                HashSet<VersionedFile> possiblyModifiedFiles = processPossibleModifications(basePath, originalFilesSet, actualFilesSet);
 
-                var deletedFiles = new HashSet<VersionedFile>(originalFilesSet);
-                deletedFiles.ExceptWith(actualFilesSet);
+                HashSet<VersionedFile> deletedFiles = processDeletedFiles(originalFilesSet, actualFilesSet);
 
-                var addedFiles = new HashSet<VersionedFile>(actualFilesSet);
-                addedFiles.ExceptWith(originalFilesSet);
-
-                processFileSets(basePath, md5, possiblyModifiedFiles, deletedFiles, addedFiles);
+                HashSet<VersionedFile> addedFiles = processAddedFiles(basePath, originalFilesSet, actualFilesSet);
 
                 var allFiles = new List<VersionedFile>();
                 allFiles.AddRange(deletedFiles);
@@ -60,30 +62,61 @@ namespace FileVersioningTool.FileVersioningBackend
             }
         }
 
-        private static void processFileSets(string basePath, MD5 md5, HashSet<VersionedFile> possiblyModifiedFiles, HashSet<VersionedFile> deletedFiles, HashSet<VersionedFile> addedFiles)
+        /// <summary>
+        /// Gets a set of all files that were added
+        /// </summary>
+        /// <param name="basePath">Directory to process</param>
+        /// <param name="originalFilesSet">Set of original files</param>
+        /// <param name="actualFilesSet">Set of files currently in the directory</param>
+        /// <returns>Files that were added</returns>
+        private static HashSet<VersionedFile> processAddedFiles(string basePath, HashSet<VersionedFile> originalFilesSet, HashSet<VersionedFile> actualFilesSet)
         {
-            foreach (var file in deletedFiles)
-            {
-                file.Status = FileStatus.DELETED;
-            }
-
+            var addedFiles = new HashSet<VersionedFile>(actualFilesSet);
+            addedFiles.ExceptWith(originalFilesSet);
             foreach (var file in addedFiles)
             {
-                var hash = getHash(md5, Path.Combine(basePath, file.Name));
+                var hash = getHash(Path.Combine(basePath, file.Name));
                 file.Hash = hash;
                 file.Version = 1;
                 file.Status = FileStatus.ADDED;
             }
 
-            checkPossibleModifications(basePath, md5, possiblyModifiedFiles);
+            return addedFiles;
         }
 
-        private static void checkPossibleModifications(string basePath, MD5 md5, HashSet<VersionedFile> possiblyModifiedFiles)
+        /// <summary>
+        /// Gets a set of all files that were deleted
+        /// </summary>
+        /// <param name="originalFilesSet">Set of original files</param>
+        /// <param name="actualFilesSet">Set of files currently in the directory</param>
+        /// <returns>Files that were deleted</returns>
+        private static HashSet<VersionedFile> processDeletedFiles(HashSet<VersionedFile> originalFilesSet, HashSet<VersionedFile> actualFilesSet)
         {
+            var deletedFiles = new HashSet<VersionedFile>(originalFilesSet);
+            deletedFiles.ExceptWith(actualFilesSet);
+            foreach (var file in deletedFiles)
+            {
+                file.Status = FileStatus.DELETED;
+            }
+
+            return deletedFiles;
+        }
+
+        /// <summary>
+        /// Checks all files that existed before and still exist if they were modified (using comparison of checksums)
+        /// </summary>
+        /// <param name="basePath">Directory to process</param>        
+        /// <param name="originalFilesSet">Set of original files and their hashes</param>
+        /// <param name="actualFilesSet">Set of files currently in the directory</param>
+        /// <returns>Files that were neither added or deleted, with Status field containing whether they've been modified</returns>
+        private static HashSet<VersionedFile> processPossibleModifications(string basePath, HashSet<VersionedFile> originalFilesSet, HashSet<VersionedFile> actualFilesSet)
+        {
+            var possiblyModifiedFiles = new HashSet<VersionedFile>(originalFilesSet);
+            possiblyModifiedFiles.IntersectWith(actualFilesSet);
             foreach (var file in possiblyModifiedFiles)
             {
 
-                var hash = getHash(md5, Path.Combine(basePath, file.Name));
+                var hash = getHash(Path.Combine(basePath, file.Name));
                 if (hash != file.Hash)
                 {
                     file.Version += 1;
@@ -95,18 +128,26 @@ namespace FileVersioningTool.FileVersioningBackend
                     file.Status = FileStatus.UNCHANGED;
                 }
             }
+
+            return possiblyModifiedFiles;
         }
 
+
+        /// <summary>
+        /// Analyzes a new directory and prepares versioning for all files
+        /// </summary>
+        /// <param name="basePath">Directory to analyze</param>
+        /// <param name="versioningFilePath">Path to store versioning file</param>
+        /// <returns></returns>
         private static IList<VersionedFile> processNewDir(string basePath, string versioningFilePath)
         {
             
             var processedFiles = new List<VersionedFile>();
-            string[] allFiles = Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories);
-            using var md5 = MD5.Create();
+            string[] allFiles = Directory.GetFiles(basePath, "*.*", SearchOption.AllDirectories);            
 
             foreach (var fullFilePath in allFiles)
             {
-                var hash = getHash(md5, fullFilePath);
+                var hash = getHash(fullFilePath);
                 var versionedFile = new VersionedFile() { Name = Path.GetRelativePath(basePath, fullFilePath), Hash = hash, Status = FileStatus.ADDED, Version = 1 };
                 processedFiles.Add(versionedFile);
             }
@@ -118,7 +159,12 @@ namespace FileVersioningTool.FileVersioningBackend
             return processedFiles;
         }
 
-        private static string getHash(MD5 md5, string filename)
+        /// <summary>
+        /// Calculates md5 hash - checksum - of given file and converts it to "usual" string representation
+        /// </summary>        
+        /// <param name="filename">Path to a file</param>
+        /// <returns></returns>
+        private static string getHash(string filename)
         {
             using var stream = File.OpenRead(filename);
             var hash = md5.ComputeHash(stream);
