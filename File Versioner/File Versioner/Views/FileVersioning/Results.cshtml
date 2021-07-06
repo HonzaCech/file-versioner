@@ -1,0 +1,38 @@
+﻿
+@model IEnumerable<VersionedFile>
+@*
+    For more information on enabling MVC for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+*@
+@{
+}
+<h2>Results</h2>
+
+@if (Model != null)
+{
+    <table class="table">
+
+        <thead>
+            <tr>
+                <th>File name</th>
+                <th>Status</th>
+                <th>Version</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model)
+            {
+                <tr>
+                    <td>@Html.DisplayFor(modelItem => item.Name)</td>
+                    <td>@Html.DisplayFor(modelItem => item.Status)</td>
+                    <td>@Html.DisplayFor(modelItem => item.Version)</td>
+                </tr>
+            }
+        </tbody>
+
+    </table>
+}
+else
+{
+    <h2>You have to enter a path</h2>	         
+}
+

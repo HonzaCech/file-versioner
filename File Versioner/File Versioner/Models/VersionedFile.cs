@@ -1,10 +1,11 @@
-﻿using System;
+﻿using FileVersioningTool.FileVersioningBackend;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace FileVersioningTool.FileVersioningBackend
+namespace FileVersioningTool.Models
 {
     public class VersionedFile
     {

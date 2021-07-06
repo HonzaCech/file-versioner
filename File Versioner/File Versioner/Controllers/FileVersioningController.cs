@@ -16,13 +16,20 @@ namespace FileVersioningTool.Controllers
             _fileVersioner = fileVersioner;
         }
 
-        public IActionResult Index(string path)
+        public IActionResult Index()
+        {
+            return View();
+        }
+        
+        public async Task<IActionResult> Results(string path)
         {
             if (!string.IsNullOrWhiteSpace(path))
             {
-                _fileVersioner.GetChangesList(path);
+                var results = await _fileVersioner.GetChangesListAsync(path);
+                return View(results);
             }
             return View();
+            
         }
     }
 }
